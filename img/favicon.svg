@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!--
+    DAS Electric favicon.
+    Flat simplification of the official bolt mark in img/logo-trimmed.png (same silhouette
+    proportions, no bevel) so it stays legible at 16px. Colors are the site's CSS tokens:
+    background = navy-800 (#0F1E36), bolt = gold-bright (#FFC93C).
+  -->
+  <rect width="64" height="64" rx="12" fill="#0F1E36"/>
+  <polygon fill="#FFC93C" points="36.5,8 44.7,8 27.5,29.4 53,28.7 19.3,56 25,36.3 11,36.9"/>
+</svg>
