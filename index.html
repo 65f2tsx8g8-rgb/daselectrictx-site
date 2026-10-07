@@ -229,7 +229,23 @@
   .field input:focus, .field textarea:focus { outline: none; border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright); }
   .field textarea { min-height: 130px; resize: vertical; }
   form .btn-gold { width: 100%; border: 0; cursor: pointer; font-family: inherit; }
+  form .btn-gold:disabled { opacity: .6; cursor: progress; }
   .form-note { margin-top: 12px; font-size: 13px; color: rgba(255,255,255,.6); }
+  .form-note a:hover { color: var(--gold-bright); }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+  .form-result { background: var(--navy-900); border: 1px solid var(--line-dark); border-top: 3px solid var(--gold); padding: 28px; }
+  .form-result:focus { outline: none; }
+  .form-result h3 { font-size: 26px; margin-bottom: 10px; }
+  .form-result p { color: var(--muted); font-size: 16px; margin-bottom: 14px; }
+  .form-result textarea {
+    width: 100%; min-height: 150px; margin: 4px 0 14px; resize: vertical;
+    background: var(--navy-950); color: var(--white); border: 1px solid rgba(255,255,255,.25);
+    border-radius: var(--radius); padding: 12px 14px; font: 14px/1.5 'Inter', sans-serif;
+  }
+  .form-result .btn-row { margin-top: 4px; }
+  .form-result button.btn { border: 1px solid rgba(255,255,255,.55); background: none; color: var(--white); cursor: pointer; font-family: inherit; }
+  .form-result button.btn:hover { border-color: var(--gold-bright); color: var(--gold-bright); }
+  .form-result .linkish { background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font: inherit; font-size: 14px; margin-top: 16px; }
 
   /* Footer */
   footer { background: var(--navy-900); border-top: 1px solid var(--line-dark); padding: 48px 0 28px; }
@@ -465,6 +481,7 @@
         </div>
       </dl>
     </div>
+    <div class="form-wrap">
     <form id="estimateForm" aria-label="Estimate request">
       <div class="form-row">
         <div class="field">
@@ -490,9 +507,13 @@
         <label for="details">Project Details *</label>
         <textarea id="details" name="details" required placeholder="Tell us about your project — new build, remodel, pool, generator, EV charger, panel upgrade..."></textarea>
       </div>
-      <button class="btn btn-gold" type="submit">Request Estimate</button>
-      <p class="form-note">Submitting opens a pre-filled email to info@daselectrictx.com in your mail app.</p>
+      <!-- Spam trap: hidden from people, filled in by bots. -->
+      <input type="checkbox" name="botcheck" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <button class="btn btn-gold" type="submit" id="formSubmit">Request Estimate</button>
+      <p class="form-note" id="formNote">Prefer to talk? Call <a href="tel:512-567-4804">(512) 567-4804</a>.</p>
     </form>
+    <div class="form-result" id="formResult" role="status" aria-live="polite" tabindex="-1" hidden></div>
+    </div>
   </div>
 </section>
 
@@ -546,26 +567,124 @@
     }
   });
 
-  // Estimate form → opens a pre-filled email (no backend needed for preview)
-  function estimateMailto(f) {
-    const name = f.fname.value + ' ' + f.lname.value;
-    // Build the plain-text body first, then encode it once, so values containing
-    // &, + or # can't split the query string or start a fragment.
-    const body = [
-      'Name: ' + name,
-      'Email: ' + f.email.value,
-      'Phone: ' + f.phone.value,
+  // Estimate form.
+  // With a Web3Forms access key set, requests are sent straight to info@daselectrictx.com
+  // and the visitor sees a confirmation. Without a key (or if sending fails), we open a
+  // pre-filled email and ALSO show a fallback panel, so a visitor without a mail app
+  // never loses their request silently. The key is a public, send-only token by design.
+  const WEB3FORMS_KEY = '';
+  const form = document.getElementById('estimateForm');
+  const result = document.getElementById('formResult');
+  const submitBtn = document.getElementById('formSubmit');
+
+  function requestText(f) {
+    return [
+      'Name: ' + f.fname.value.trim() + ' ' + f.lname.value.trim(),
+      'Email: ' + f.email.value.trim(),
+      'Phone: ' + f.phone.value.trim(),
       '',
       'Project Details:',
-      f.details.value
+      f.details.value.trim()
     ].join('\r\n');
+  }
+  function estimateMailto(f) {
+    const name = f.fname.value.trim() + ' ' + f.lname.value.trim();
+    // Encode the plain-text body once, so values containing &, + or # can't split the query string.
     return 'mailto:info@daselectrictx.com'
       + '?subject=' + encodeURIComponent('Estimate Request — ' + name)
-      + '&body=' + encodeURIComponent(body);
+      + '&body=' + encodeURIComponent(requestText(f));
   }
-  document.getElementById('estimateForm').addEventListener('submit', e => {
+  function el(tag, props, kids) {
+    const n = Object.assign(document.createElement(tag), props || {});
+    (kids || []).forEach(k => n.append(k));
+    return n;
+  }
+  function showResult(nodes) {
+    result.replaceChildren(...nodes);
+    form.hidden = true;
+    result.hidden = false;
+    result.focus();
+  }
+  function backToForm() {
+    result.hidden = true;
+    form.hidden = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Request Estimate';
+    form.fname.focus();
+  }
+  function showSent(f) {
+    showResult([
+      el('h3', { textContent: 'Thanks, ' + f.fname.value.trim() + ' — request received.' }),
+      el('p', { textContent: "We'll review your project and get back to you promptly. Need us sooner? Call (512) 567-4804." }),
+      el('a', { className: 'btn btn-gold', href: 'tel:512-567-4804', textContent: 'Call (512) 567-4804' })
+    ]);
+    form.reset();
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Request Estimate';
+  }
+  function showFallback(f, failed) {
+    const text = requestText(f);
+    const box = el('textarea', { readOnly: true, value: text });
+    box.setAttribute('aria-label', 'Your request');
+    const copy = el('button', { className: 'btn', type: 'button', textContent: 'Copy details' });
+    copy.addEventListener('click', () => {
+      box.select();
+      const done = () => { copy.textContent = 'Copied'; };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => document.execCommand('copy') && done());
+      else if (document.execCommand('copy')) done();
+    });
+    const edit = el('button', { className: 'linkish', type: 'button', textContent: 'Edit my request' });
+    edit.addEventListener('click', backToForm);
+    showResult([
+      el('h3', { textContent: failed ? "We couldn't send that automatically." : 'Almost done — send your request.' }),
+      el('p', { textContent: failed
+        ? 'Please email or call us so your request reaches us. Your details are below, ready to copy.'
+        : "Your email app should open with your request filled in — just press send. If it didn't open, copy your details below and email or call us." }),
+      box,
+      el('div', { className: 'btn-row' }, [
+        el('a', { className: 'btn btn-gold', href: estimateMailto(f), textContent: 'Email info@daselectrictx.com' }),
+        el('a', { className: 'btn btn-ghost', href: 'tel:512-567-4804', textContent: 'Call (512) 567-4804' }),
+        copy
+      ]),
+      edit
+    ]);
+    // Grow the box to fit the request so nothing is hidden on narrow screens.
+    box.style.height = Math.min(box.scrollHeight + 4, 360) + 'px';
+  }
+
+  form.addEventListener('submit', async e => {
     e.preventDefault();
-    location.href = estimateMailto(e.target);
+    const f = e.target;
+    if (f.botcheck.checked) return; // bot filled the hidden trap
+    if (!WEB3FORMS_KEY) {
+      showFallback(f, false);
+      location.href = estimateMailto(f);
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending…';
+    try {
+      const name = f.fname.value.trim() + ' ' + f.lname.value.trim();
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_KEY,
+          subject: 'Estimate Request — ' + name,
+          from_name: 'DAS Electric website',
+          name: name,
+          email: f.email.value.trim(),
+          phone: f.phone.value.trim(),
+          message: f.details.value.trim(),
+          botcheck: false
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) showSent(f);
+      else showFallback(f, true);
+    } catch (err) {
+      showFallback(f, true);
+    }
   });
 </script>
 
